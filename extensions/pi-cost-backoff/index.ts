@@ -39,31 +39,14 @@
  * generation TPS stays honest regardless.
  */
 
-import type { ExtensionAPI, ExtensionContext } from '@earendil-works/pi-coding-agent';
+import type {
+  BeforeProviderRequestEvent,
+  ExtensionAPI,
+  ExtensionEvent,
+  TurnEndEvent,
+} from '@earendil-works/pi-coding-agent';
 
-// ─── Event types (not exported from pi's public API) ────────────────────────
-// Mirrors internal types in @earendil-works/pi-coding-agent's
-// dist/core/extensions/types.d.ts. Replace with imports when pi exports them.
-
-interface BeforeProviderRequestEvent {
-  type: 'before_provider_request';
-  payload: unknown;
-}
-
-interface AfterProviderResponseEvent {
-  type: 'after_provider_response';
-  status: number;
-  headers: Record<string, string>;
-}
-
-interface TurnEndEvent {
-  type: 'turn_end';
-  turnIndex: number;
-  message: unknown;
-  toolResults: unknown[];
-}
-
-// ─── Constants ──────────────────────────────────────────────────────────────
+type AfterProviderResponseEvent = Extract<ExtensionEvent, { type: 'after_provider_response' }>;
 
 /** Event emitted by pi-tps after each turn with structured telemetry. */
 const TPS_TELEMETRY_EVENT = 'tps:telemetry';
@@ -95,8 +78,6 @@ const BURN_RATE_MIN_ELAPSED_MS = 1000;
 /** Fallback delay when a 429 arrives without a parseable retry-after (ms). */
 const RETRY_AFTER_FALLBACK_MS = 5_000;
 
-// ─── Config ─────────────────────────────────────────────────────────────────
-
 export interface BackoffConfig {
   /** Per-turn $/Mtok spike threshold. null = spike trigger disabled. */
   capUsdPerM: number | null;
@@ -115,8 +96,6 @@ export interface BackoffConfig {
   /** Master kill-switch (true = no-op). */
   disabled: boolean;
 }
-
-// ─── State ──────────────────────────────────────────────────────────────────
 
 export interface CostSample {
   costUsd: number;
@@ -151,8 +130,6 @@ export function createState(): BackoffState {
     lastTripReason: null,
   };
 }
-
-// ─── Pure helpers (exported for testing) ────────────────────────────────────
 
 /**
  * Deterministic exponential backoff delay for a level, before jitter.
@@ -317,8 +294,6 @@ export function applyDecay(
   return { level: newLevel, lastCleanMs: lastCleanMs + consumed };
 }
 
-// ─── Config loading ─────────────────────────────────────────────────────────
-
 /** Read a non-negative number from a flag (string) or env var. Flag wins. Returns null if unset/invalid. */
 function readPositiveNumber(
   getFlag: (name: string) => boolean | string | undefined,
@@ -363,8 +338,6 @@ export function readConfig(getFlag: (name: string) => boolean | string | undefin
   };
 }
 
-// ─── Cost-signal extraction ────────────────────────────────────────────────
-
 /** Minimal projection of pi-tps's TurnTelemetry payload (see pi-tps README). */
 interface TpsTelemetrySignal {
   rateUsdPerMTokens?: number | null;
@@ -386,31 +359,18 @@ function readCostFromTurnEndMessage(message: unknown): number | null {
   return total;
 }
 
-// ─── Sleep ──────────────────────────────────────────────────────────────────
-
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
-  if (ms <= 0) return Promise.resolve();
+  if (ms <= 0 || signal?.aborted) return Promise.resolve();
   return new Promise((resolve) => {
-    const t = setTimeout(() => resolve(), ms);
-    if (signal) {
-      if (signal.aborted) {
-        clearTimeout(t);
-        resolve();
-        return;
-      }
-      signal.addEventListener(
-        'abort',
-        () => {
-          clearTimeout(t);
-          resolve();
-        },
-        { once: true }
-      );
-    }
+    const finish = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', finish);
+      resolve();
+    };
+    const timer = setTimeout(finish, ms);
+    signal?.addEventListener('abort', finish, { once: true });
   });
 }
-
-// ─── Display ────────────────────────────────────────────────────────────────
 
 function formatSeconds(ms: number): string {
   return (ms / 1000).toFixed(1);
@@ -425,8 +385,6 @@ function describeConfig(config: BackoffConfig): string {
   const tuning = `base ${formatSeconds(config.baseMs)}s · max ${formatSeconds(config.maxMs)}s · window ${formatSeconds(config.windowMs)}s · decay ${formatSeconds(config.decayMs)}s`;
   return `armed: ${caps.join(', ')} · ${tuning}`;
 }
-
-// ─── Extension ──────────────────────────────────────────────────────────────
 
 export default function costBackoffExtension(pi: ExtensionAPI) {
   // Register CLI flags so they're recognized on the command line and readable
@@ -479,11 +437,10 @@ export default function costBackoffExtension(pi: ExtensionAPI) {
 
   const state = createState();
 
-  // ── Cost signal: tps:telemetry (primary) ────────────────────────────────
   // pi-tps emits this after each turn. We capture the blended $/Mtok rate
   // (spike trigger) and the turn's total cost (burn-rate window). Once seen,
   // the turn_end fallback is permanently disabled — pi-tps owns cost capture.
-  pi.events?.on(TPS_TELEMETRY_EVENT, (payload: unknown) => {
+  pi.events.on(TPS_TELEMETRY_EVENT, (payload: unknown) => {
     const config = getConfig();
     if (!payload || typeof payload !== 'object') return;
     const t = payload as TpsTelemetrySignal;
@@ -503,7 +460,6 @@ export default function costBackoffExtension(pi: ExtensionAPI) {
     state.tpsTelemetryEverSeen = true;
   });
 
-  // ── Cost signal: turn_end fallback (only until pi-tps is seen) ──────────
   // Reads message.usage.cost.total directly. Cannot compute rateUsdPerMTokens,
   // so the spike trigger stays inactive in fallback mode. Disabled permanently
   // once any tps:telemetry event arrives (avoids double-counting cost in the
@@ -517,14 +473,13 @@ export default function costBackoffExtension(pi: ExtensionAPI) {
     }
   });
 
-  // ── Reactive 429: stash retry-after for the next request to honor ─────────
   // pi's transport already retries transport-level 429s; this composes by
   // stashing the retry-after so the *next* request (potentially across a turn
   // boundary) honors it. No level bump or notify here — before_provider_request
   // consumes the override, escalates the level, and notifies when it actually
   // backs off. This avoids spurious notifications when pi's transport retries
   // the 429 internally and succeeds.
-  pi.on('after_provider_response', (event: AfterProviderResponseEvent, _ctx: ExtensionContext) => {
+  pi.on('after_provider_response', (event: AfterProviderResponseEvent) => {
     if (getConfig().disabled) return;
     if (event.status !== 429) return;
 
@@ -533,71 +488,60 @@ export default function costBackoffExtension(pi: ExtensionAPI) {
     state.lastTripReason = `429 rate-limited · retry-after ${formatSeconds(retryAfterMs)}s`;
   });
 
-  // ── The actuator: throttle the next provider request ─────────────────────
-  // pi awaits this hook (verified in sdk.js `onPayload`) before sending the
-  // HTTP request. An `await sleep(N)` here genuinely delays the request.
-  pi.on(
-    'before_provider_request',
-    async (_event: BeforeProviderRequestEvent, ctx: ExtensionContext) => {
-      const config = getConfig();
-      if (config.disabled) return;
+  // pi awaits this hook before sending the HTTP request, so an awaited sleep
+  // here genuinely delays the request.
+  pi.on('before_provider_request', async (_event: BeforeProviderRequestEvent, ctx) => {
+    const config = getConfig();
+    if (config.disabled) return;
 
-      const nowMs = Date.now();
+    const nowMs = Date.now();
 
-      // Consume any reactive 429 override (one-shot).
-      const overrideMs = state.reactiveOverrideMs;
-      state.reactiveOverrideMs = null;
+    // Consume any reactive 429 override (one-shot).
+    const overrideMs = state.reactiveOverrideMs;
+    state.reactiveOverrideMs = null;
 
-      const trip = evaluateTriggers(state, config, nowMs);
+    const trip = evaluateTriggers(state, config, nowMs);
 
-      // Clean path: no override, no trip → decay the level.
-      if (overrideMs === null && trip === null) {
-        const decayed = applyDecay(state.level, state.lastCleanMs, nowMs, config.decayMs);
-        state.level = decayed.level;
-        state.lastCleanMs = decayed.lastCleanMs;
-        if (state.level === 0 && state.lastTripReason !== null) {
-          state.lastTripReason = null;
-          if (ctx.hasUI) ctx.ui.setStatus(STATUS_KEY, undefined);
-        }
-        return;
+    // Clean path: no override, no trip → decay the level.
+    if (overrideMs === null && trip === null) {
+      const decayed = applyDecay(state.level, state.lastCleanMs, nowMs, config.decayMs);
+      state.level = decayed.level;
+      state.lastCleanMs = decayed.lastCleanMs;
+      if (state.level === 0 && state.lastTripReason !== null) {
+        state.lastTripReason = null;
+        if (ctx.hasUI) ctx.ui.setStatus(STATUS_KEY, undefined);
       }
-
-      // Trip path: escalate one level, compute delay.
-      state.level = Math.min(state.level + 1, MAX_BACKOFF_LEVEL);
-      state.lastCleanMs = null;
-
-      let delayMs: number;
-      if (overrideMs !== null) {
-        // Reactive 429: honor retry-after, but never go below the exponential floor.
-        delayMs = Math.max(
-          overrideMs,
-          computeBackoffDelay(state.level, config.baseMs, config.maxMs)
-        );
-      } else {
-        delayMs = computeBackoffDelay(state.level, config.baseMs, config.maxMs);
-        state.lastTripReason = trip!.reason;
-      }
-      delayMs = applyJitter(delayMs, config.jitterRatio);
-
-      if (ctx.hasUI) {
-        ctx.ui.setStatus(
-          STATUS_KEY,
-          `backoff ${formatSeconds(delayMs)}s · ${state.lastTripReason}`
-        );
-        ctx.ui.notify(
-          `cost backoff: ${state.lastTripReason} → waiting ${formatSeconds(delayMs)}s`,
-          'warning'
-        );
-      }
-
-      await sleep(delayMs, ctx.signal);
+      return;
     }
-  );
 
-  // ── Command: inspect current config + state ──────────────────────────────
+    // Trip path: escalate one level, compute delay.
+    state.level = Math.min(state.level + 1, MAX_BACKOFF_LEVEL);
+    state.lastCleanMs = null;
+
+    let delayMs: number;
+    if (overrideMs !== null) {
+      // Reactive 429: honor retry-after, but never go below the exponential floor.
+      delayMs = Math.max(overrideMs, computeBackoffDelay(state.level, config.baseMs, config.maxMs));
+    } else {
+      delayMs = computeBackoffDelay(state.level, config.baseMs, config.maxMs);
+      state.lastTripReason = trip!.reason;
+    }
+    delayMs = applyJitter(delayMs, config.jitterRatio);
+
+    if (ctx.hasUI) {
+      ctx.ui.setStatus(STATUS_KEY, `backoff ${formatSeconds(delayMs)}s · ${state.lastTripReason}`);
+      ctx.ui.notify(
+        `cost backoff: ${state.lastTripReason} → waiting ${formatSeconds(delayMs)}s`,
+        'warning'
+      );
+    }
+
+    await sleep(delayMs, ctx.signal);
+  });
+
   pi.registerCommand('cost-backoff', {
     description: 'Show current cost-backoff config and live backoff state',
-    handler: async (_args: string, ctx: ExtensionContext) => {
+    handler: async (_args, ctx) => {
       const config = getConfig();
       const lines: string[] = [];
       lines.push(describeConfig(config));

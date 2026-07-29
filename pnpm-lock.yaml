@@ -8,9 +8,6 @@ importers:
 
   .:
     dependencies:
-      '@earendil-works/pi-ai':
-        specifier: '>=0.74.0'
-        version: 0.79.8(ws@8.21.0)(zod@4.4.3)
       '@earendil-works/pi-coding-agent':
         specifier: '>=0.74.0'
         version: 0.79.8(ws@8.21.0)(zod@4.4.3)
@@ -1136,6 +1133,7 @@ packages:
   git-raw-commits@5.0.1:
     resolution: {integrity: sha512-Y+csSm2GD/PCSh6Isd/WiMjNAydu0VBiG9J7EdQsNA5P9uXvLayqjmTsNlK5Gs9IhblFZqOU0yid5Il5JPoLiQ==}
     engines: {node: '>=18'}
+    deprecated: Deprecated and no longer maintained. Use @conventional-changelog/git-client instead.
     hasBin: true
 
   glob@13.0.6:

@@ -1,6 +1,6 @@
 {
   "name": "@monotykamary/pi-cost-backoff",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Cost-aware request throttling for pi — exponential backoff when $/M or $/min exceeds your cap. Companion to pi-tps.",
   "keywords": [
     "pi-package"
@@ -42,7 +42,6 @@
     "vitest": "4.1.7"
   },
   "peerDependencies": {
-    "@earendil-works/pi-ai": ">=0.74.0",
     "@earendil-works/pi-coding-agent": ">=0.74.0"
   },
   "overrides": {
@@ -51,5 +50,8 @@
     "protobufjs": "8.4.0",
     "ws": "8.20.1"
   },
-  "packageManager": "pnpm@11.6.0"
+  "packageManager": "pnpm@11.6.0",
+  "files": [
+    "extensions/pi-cost-backoff/index.ts"
+  ]
 }

@@ -33,8 +33,6 @@ describe('pi-cost-backoff extension — provider hooks integration', () => {
     vi.restoreAllMocks();
   });
 
-  // ── tps:telemetry signal capture ────────────────────────────────────────
-
   it('captures rateUsdPerMTokens and cost.total from tps:telemetry', async () => {
     setFlag(fixture, 'cost-cap-usd-per-m', '5.0');
     await activateExtension(fixture);
@@ -50,8 +48,6 @@ describe('pi-cost-backoff extension — provider hooks integration', () => {
     expect(msg).toContain('last $/M 4.20');
     expect(msg).toContain('window 1 samples');
   });
-
-  // ── Spike trip: backoff on the next request ─────────────────────────────
 
   it('backs off on the next request after a $/Mtok spike', async () => {
     setFlag(fixture, 'cost-cap-usd-per-m', '5.0');
@@ -85,13 +81,14 @@ describe('pi-cost-backoff extension — provider hooks integration', () => {
     await promise;
   });
 
-  it('does not back off when no signal has been seen yet (cold start)', async () => {
+  it('does not back off or replace the payload when no signal has been seen yet', async () => {
     setFlag(fixture, 'cost-cap-usd-per-m', '5.0');
     await activateExtension(fixture);
 
-    // No tps:telemetry emitted → lastRateUsdPerM is null → no trip.
-    await fixture.fireBeforeProviderRequest();
+    // Returning undefined preserves payload replacements from other provider middleware.
+    const result = await fixture.fireBeforeProviderRequest();
 
+    expect(result).toBeUndefined();
     expect(fixture.setStatusSpy).not.toHaveBeenCalled();
     expect(fixture.notifySpy).not.toHaveBeenCalled();
   });
@@ -108,8 +105,6 @@ describe('pi-cost-backoff extension — provider hooks integration', () => {
 
     expect(fixture.notifySpy).not.toHaveBeenCalled();
   });
-
-  // ── Exponential escalation across consecutive trips ─────────────────────
 
   it('escalates the delay across consecutive spike trips', async () => {
     setFlag(fixture, 'cost-cap-usd-per-m', '5.0');
@@ -145,8 +140,6 @@ describe('pi-cost-backoff extension — provider hooks integration', () => {
     await promise;
   });
 
-  // ── Decay: clean turns reduce the level over time ────────────────────────
-
   it('decays the level after sustained clean behavior and clears status', async () => {
     setFlag(fixture, 'cost-cap-usd-per-m', '5.0');
     setFlag(fixture, 'cost-backoff-decay-ms', '30000');
@@ -175,8 +168,6 @@ describe('pi-cost-backoff extension — provider hooks integration', () => {
 
     expect(fixture.setStatusSpy).toHaveBeenCalledWith('pi-cost-backoff', undefined);
   });
-
-  // ── Reactive 429 ─────────────────────────────────────────────────────────
 
   it('a 429 sets a retry-after override honored (and escalated) by the next request', async () => {
     await activateExtension(fixture);
@@ -223,8 +214,6 @@ describe('pi-cost-backoff extension — provider hooks integration', () => {
     expect(fixture.notifySpy).not.toHaveBeenCalled();
   });
 
-  // ── turn_end fallback (no pi-tps) ────────────────────────────────────────
-
   it('captures cost from turn_end when pi-tps is absent → burn trip fires', async () => {
     setFlag(fixture, 'cost-cap-usd-per-min', '1.0');
     await activateExtension(fixture);
@@ -259,8 +248,6 @@ describe('pi-cost-backoff extension — provider hooks integration', () => {
     expect(msg).toContain('window 1 samples');
   });
 
-  // ── Kill-switch ──────────────────────────────────────────────────────────
-
   it('disabled flag makes every trigger a no-op', async () => {
     setFlag(fixture, 'cost-cap-usd-per-m', '5.0');
     setFlag(fixture, 'cost-backoff-disable', true);
@@ -283,8 +270,6 @@ describe('pi-cost-backoff extension — provider hooks integration', () => {
     expect(fixture.notifySpy).not.toHaveBeenCalled();
   });
 
-  // ── ctx.signal aborts the backoff sleep ──────────────────────────────────
-
   it('aborts the backoff sleep when ctx.signal fires', async () => {
     setFlag(fixture, 'cost-cap-usd-per-m', '5.0');
     setFlag(fixture, 'cost-backoff-max-ms', '60000');
@@ -304,8 +289,6 @@ describe('pi-cost-backoff extension — provider hooks integration', () => {
     // Should resolve immediately (sleep aborted) without advancing timers.
     await promise;
   });
-
-  // ── Edge cases for coverage ─────────────────────────────────────────────
 
   it('resolves the backoff sleep immediately when ctx.signal is already aborted', async () => {
     setFlag(fixture, 'cost-cap-usd-per-m', '5.0');

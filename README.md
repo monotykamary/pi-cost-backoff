@@ -146,7 +146,7 @@ trip 5 → level 5 → 30.0s (clamped)
 
 ## How it works
 
-The throttle point is pi's `before_provider_request` hook. pi **awaits** this hook before sending the HTTP request, so an `await sleep(N)` here genuinely delays the request (verified in pi's `sdk.js` `onPayload`).
+The throttle point is pi's `before_provider_request` hook. pi **awaits** this hook before sending the HTTP request, so an `await sleep(N)` here genuinely delays the request.
 
 ```
 turn N                        turn-end cost captured → lastRateUsdPerM / burn window
@@ -155,6 +155,16 @@ turn N+1
   └─ before_provider_request ──►  evaluate triggers → sleep(delay) if tripped → request fires
   └─ after_provider_response ──► if 429: stash retry-after for the next request
 ```
+
+### Compatibility
+
+Current pi (0.83) exports the provider and turn event types used by this extension, and the extension now consumes those public types directly.
+
+This extension is compatible with [pi-better-openai](https://github.com/mattleong/pi-better-openai):
+
+- Both use `before_provider_request`, but for independent purposes. pi-cost-backoff waits and returns `undefined`, preserving the current payload; pi-better-openai may then add `service_tier`. Either load order composes correctly.
+- They use distinct status keys. pi-better-openai's replacement footer includes `getExtensionStatuses()`, so an active cost-backoff status remains visible.
+- pi-better-openai's subscription-usage polling does not emit `tps:telemetry`; install pi-tps when you need the `$/Mtok` signal. The built-in `turn_end` fallback still supports the `$/min` trigger without pi-tps.
 
 ### Cost signal
 

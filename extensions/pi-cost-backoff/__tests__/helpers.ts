@@ -1,27 +1,13 @@
 import { vi } from 'vitest';
-import type { ExtensionAPI, ExtensionContext } from '@earendil-works/pi-coding-agent';
+import type {
+  BeforeProviderRequestEvent,
+  ExtensionAPI,
+  ExtensionEvent,
+  ExtensionContext,
+  TurnEndEvent,
+} from '@earendil-works/pi-coding-agent';
 
-// ─── Event types (mirrors extension/index.ts — not exported from pi's public API) ────
-
-export interface BeforeProviderRequestEvent {
-  type: 'before_provider_request';
-  payload: unknown;
-}
-
-export interface AfterProviderResponseEvent {
-  type: 'after_provider_response';
-  status: number;
-  headers: Record<string, string>;
-}
-
-export interface TurnEndEvent {
-  type: 'turn_end';
-  turnIndex: number;
-  message: unknown;
-  toolResults: unknown[];
-}
-
-// ─── Mock setup ──────────────────────────────────────────────────────────────
+type AfterProviderResponseEvent = Extract<ExtensionEvent, { type: 'after_provider_response' }>;
 
 /** Construct an assistant message with a usage.cost.total, for turn_end fallback tests. */
 export function makeAssistantMessageWithCost(opts: {
@@ -96,7 +82,7 @@ export interface TestFixture {
   /** Set ctx.signal for the next before_provider_request dispatch. */
   setSignal: (signal: AbortSignal | undefined) => void;
   /** Invoke the before_provider_request handler and await it (simulates pi awaiting onPayload). */
-  fireBeforeProviderRequest: () => Promise<void>;
+  fireBeforeProviderRequest: () => Promise<unknown>;
   /** Invoke the after_provider_response handler (simulates pi awaiting onResponse). */
   fireAfterProviderResponse: (status: number, headers?: Record<string, string>) => Promise<void>;
 }
@@ -200,7 +186,7 @@ export function createTestFixture(): TestFixture {
       const h = handlers['before_provider_request'];
       if (!h) throw new Error('before_provider_request handler not registered');
       const event: BeforeProviderRequestEvent = { type: 'before_provider_request', payload: {} };
-      await h(event, mockCtx);
+      return await h(event, mockCtx);
     },
     fireAfterProviderResponse: async (status, headers = {}) => {
       const h = handlers['after_provider_response'];
@@ -234,6 +220,6 @@ export async function fireTurnEnd(
 ): Promise<void> {
   const h = fixture.handlers['turn_end'];
   if (!h) throw new Error('turn_end handler not registered');
-  const event: TurnEndEvent = { type: 'turn_end', turnIndex, message, toolResults: [] };
+  const event = { type: 'turn_end', turnIndex, message, toolResults: [] } as TurnEndEvent;
   await h(event, fixture.mockCtx);
 }
