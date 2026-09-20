@@ -156,7 +156,7 @@ export function createTestFixture(): TestFixture {
   const mockPi: Partial<ExtensionAPI> = {
     on: vi.fn((event: string, handler: any) => {
       handlers[event] = handler;
-      return mockPi as ExtensionAPI;
+      return () => {};
     }),
     registerCommand: registerCommandSpy,
     registerFlag: registerFlagSpy,
