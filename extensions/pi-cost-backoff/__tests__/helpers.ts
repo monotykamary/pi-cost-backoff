@@ -220,6 +220,23 @@ export async function fireTurnEnd(
 ): Promise<void> {
   const h = fixture.handlers['turn_end'];
   if (!h) throw new Error('turn_end handler not registered');
-  const event = { type: 'turn_end', turnIndex, message, toolResults: [] } as TurnEndEvent;
+  const event: TurnEndEvent = {
+    type: 'turn_end',
+    turnIndex,
+    message: message as TurnEndEvent['message'],
+    toolResults: [],
+    messageEntryId: 'msg-test',
+    toolResultEntryIds: [],
+    entries: [],
+    continue: true,
+    context: {
+      contextEntries: [],
+      contextMessages: [],
+      llmMessages: [],
+      pendingMessages: [],
+      canContinue: true,
+    },
+    outcome: 'completed',
+  };
   await h(event, fixture.mockCtx);
 }

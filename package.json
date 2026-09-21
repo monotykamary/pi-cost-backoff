@@ -40,7 +40,7 @@
     "simple-git-hooks": "2.13.1",
     "typescript": "6.0.3",
     "vitest": "4.1.7",
-    "@earendil-works/pi-coding-agent": "0.86.0"
+    "@earendil-works/pi-coding-agent": "0.87.0"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": ">=0.74.0"
@@ -50,7 +50,7 @@
     "fast-xml-builder": "1.2.0",
     "protobufjs": "8.4.0",
     "ws": "8.20.1",
-    "@earendil-works/pi-coding-agent": "0.86.0"
+    "@earendil-works/pi-coding-agent": "0.87.0"
   },
   "files": [
     "extensions/pi-cost-backoff/index.ts"
