@@ -1,6 +1,6 @@
 {
   "name": "@monotykamary/pi-cost-backoff",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Cost-aware request throttling for pi — exponential backoff when $/M or $/min exceeds your cap. Companion to pi-tps.",
   "keywords": [
     "pi-package"
@@ -12,7 +12,8 @@
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
     "lint:dead": "knip --no-gitignore",
-    "postinstall": "simple-git-hooks 2>/dev/null || true"
+    "postinstall": "simple-git-hooks 2>/dev/null || true",
+    "test:pi": "node scripts/test-pi-compat.mjs"
   },
   "pi": {
     "extensions": [
@@ -40,17 +41,17 @@
     "simple-git-hooks": "2.13.1",
     "typescript": "6.0.3",
     "vitest": "4.1.7",
-    "@earendil-works/pi-coding-agent": "0.87.0"
+    "@earendil-works/pi-coding-agent": "0.99.0"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": ">=0.74.0"
+    "@earendil-works/pi-coding-agent": "*"
   },
   "overrides": {
     "brace-expansion": "5.0.6",
     "fast-xml-builder": "1.2.0",
     "protobufjs": "8.4.0",
     "ws": "8.20.1",
-    "@earendil-works/pi-coding-agent": "0.87.0"
+    "@earendil-works/pi-coding-agent": "0.99.0"
   },
   "files": [
     "extensions/pi-cost-backoff/index.ts"
