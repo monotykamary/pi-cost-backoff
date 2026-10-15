@@ -6,6 +6,10 @@
     "pi-package"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/monotykamary/pi-cost-backoff.git"
+  },
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
